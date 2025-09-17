@@ -1,4 +1,6 @@
 ﻿# vm-terraform
+Pablo Fernando Pineda P. -
+ A00395831
 
 Este proyecto utiliza Terraform para crear y gestionar una máquina virtual Linux en Microsoft Azure de forma automatizada.
 
@@ -67,6 +69,7 @@ terraform apply
 ssh <admin_username>@<ip_publica>
 ```
 <img width="692" height="827" alt="image" src="https://github.com/user-attachments/assets/aa90d938-1983-4621-a0ab-7360af1cd0b7" />
+
 
 
 
