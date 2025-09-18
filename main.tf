@@ -1,94 +1,58 @@
-# Copyright (c) HashiCorp, Inc.
-# SPDX-License-Identifier: MPL-2.0
-
 provider "azurerm" {
   features {}
-  subscription_id = ""
+  subscription_id = var.subscription_id
 }
 
-resource "azurerm_resource_group" "main" {
-  name     = "${var.prefix}-resources"
+locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+    CreatedDate = formatdate("YYYY-MM-DD", timestamp())
+  }
+}
+
+# Resource Group Module
+module "resource_group" {
+  source = "./modules/resource-group"
+
+  name     = "${var.prefix}-${var.environment}-resources"
   location = var.location
+  tags     = local.common_tags
 }
 
-resource "azurerm_virtual_network" "main" {
-  name                = "${var.prefix}-network"
-  address_space       = ["10.0.0.0/22"]
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+# Networking Module
+module "networking" {
+  source = "./modules/networking"
+
+  prefix                        = var.prefix
+  location                      = var.location
+  resource_group_name           = module.resource_group.name
+  vnet_address_space           = var.vnet_address_space
+  subnet_address_prefixes      = var.subnet_address_prefixes
+  enable_public_ip             = var.enable_public_ip
+  enable_ssh_rule              = var.enable_ssh_rule
+  ssh_source_address_prefixes  = var.ssh_source_address_prefixes
+  custom_security_rules        = var.custom_security_rules
+  tags                         = local.common_tags
 }
 
-resource "azurerm_subnet" "internal" {
-  name                 = "internal"
-  resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.2.0/24"]
-}
+# Compute Module
+module "compute" {
+  source = "./modules/compute"
 
-resource "azurerm_public_ip" "main" {
-  name                = "${var.prefix}-pip"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  allocation_method   = "Static"
-}
-
-resource "azurerm_network_security_group" "main" {
-  name                = "${var.prefix}-nsg"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-
-  security_rule {
-    name                       = "SSH"
-    priority                   = 1001
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-}
-
-resource "azurerm_network_interface" "main" {
-  name                = "${var.prefix}-nic"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.internal.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.main.id
-  }
-}
-
-resource "azurerm_network_interface_security_group_association" "main" {
-  network_interface_id      = azurerm_network_interface.main.id
-  network_security_group_id = azurerm_network_security_group.main.id
-}
-
-resource "azurerm_linux_virtual_machine" "main" {
-  name                            = "${var.prefix}-vm"
-  resource_group_name             = azurerm_resource_group.main.name
-  location                        = azurerm_resource_group.main.location
-  size                            = "Standard_B1s"
-  admin_username                  = var.admin_username
-  admin_password                  = var.admin_password
-  disable_password_authentication = false
-  network_interface_ids = [
-    azurerm_network_interface.main.id,
-  ]
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts"
-    version   = "latest"
-  }
-
-  os_disk {
-    storage_account_type = "Standard_LRS"
-    caching              = "ReadWrite"
-  }
+  prefix                     = var.prefix
+  location                   = var.location
+  resource_group_name        = module.resource_group.name
+  subnet_id                  = module.networking.subnet_id
+  public_ip_id               = module.networking.public_ip_id
+  network_security_group_id  = module.networking.network_security_group_id
+  vm_size                    = var.vm_size
+  admin_username             = var.admin_username
+  admin_password             = var.admin_password
+  authentication_type        = var.authentication_type
+  ssh_public_key             = var.ssh_public_key
+  source_image_reference     = var.source_image_reference
+  os_disk                    = var.os_disk
+  tags                       = local.common_tags
 }
